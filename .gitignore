@@ -1,0 +1,31 @@
+#  Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.*
+terraform.plan
+
+# .tfvars files
+*.tfvars
+
+# IDEA
+*.iml
+**/.idea/*
+
+# Kitchen
+**/Gemfile.lock
+**/.kitchen/
+**/.kitchen.local.yml
+
+# vi
+.*.swp
+
+# Local files
+*.json
+*.lic
+*.key
+*.password
+.gitignore
+inspec.lock
+test-report/**

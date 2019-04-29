@@ -22,5 +22,9 @@ suites:
       systems:
         - name: zonal_private_cluster
           backend: local
+          reporter:
+            - cli
+            - junit:test-report/junit.xml
+            - html:test-report/results.html
 #        - name: gcp_zonal_private_cluster
 #          backend: gcp
