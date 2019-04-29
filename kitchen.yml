@@ -1,0 +1,26 @@
+---
+driver:
+  name: terraform
+  command_timeout: 1800
+
+provisioner:
+  name: terraform
+
+verifier:
+  name: terraform
+
+platforms:
+  - name: local
+
+suites:
+  - name: zonal_private_cluster
+    driver:
+      root_module_directory: test/fixtures/zonal_private_cluster
+      variable_files:
+        - zonal_private_cluster.tfvars
+    verifier:
+      systems:
+        - name: zonal_private_cluster
+          backend: local
+#        - name: gcp_zonal_private_cluster
+#          backend: gcp

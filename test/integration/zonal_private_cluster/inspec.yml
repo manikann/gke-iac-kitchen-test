@@ -1,0 +1,21 @@
+name: zonal_private_cluster
+title: Zonal GKE Private Cluster profile
+maintainer: Manikandan Natarajan
+copyright: The Authors
+copyright_email: manikann@gmail.com
+license: Apache-2.0
+summary: An InSpec Compliance Profile for Zonal GKE Private Cluster
+version: 0.1.0
+attributes:
+  - name: project_id
+    description: "GCP Project ID"
+    required: true
+    type: string
+  - name: location
+    description: "GCP Zone"
+    required: true
+    type: string
+  - name: cluster_name
+    description: "GKE Cluster Name"
+    required: true
+    type: string
