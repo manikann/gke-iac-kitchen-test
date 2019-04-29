@@ -26,4 +26,4 @@ gcloud --project $PROJECT_ID services enable pubsub.googleapis.com
 gcloud --project $PROJECT_ID services enable storage-api.googleapis.com
 gcloud --project $PROJECT_ID services enable servicenetworking.googleapis.com
 
-echo Y | gcloud --project $PROJECT_ID compute networks delete default-network
+echo Y | gcloud --project $PROJECT_ID compute networks delete default
