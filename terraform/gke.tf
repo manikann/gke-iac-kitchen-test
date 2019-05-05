@@ -36,9 +36,10 @@ module "kubernetes-engine" {
   kubernetes_dashboard     = "false"
   monitoring_service       = "monitoring.googleapis.com/kubernetes"
   logging_service          = "logging.googleapis.com/kubernetes"
+  network_policy           = true
+  enable_istio             = true
   regional                 = false
   http_load_balancing      = false
-  network_policy           = false
   enable_private_endpoint  = false
   enable_private_nodes     = true
   remove_default_node_pool = true
@@ -48,10 +49,12 @@ module "kubernetes-engine" {
     cidr_blocks = [{
       cidr_block   = "${local.subnet_ip_cidr}"
       display_name = "VPC"
-    }, {
-      cidr_block = "58.182.144.0/21"
-      display_name = "StarHub Broadband"
-    }]
+    },
+      {
+        cidr_block   = "58.182.144.0/21"
+        display_name = "StarHub Broadband"
+      },
+    ]
   }]
 
   node_pools = [
@@ -59,7 +62,7 @@ module "kubernetes-engine" {
       name               = "gke-node-pool"
       machine_type       = "n1-standard-2"
       min_count          = 1
-      max_count          = 3
+      max_count          = 6
       disk_size_gb       = 100
       disk_type          = "pd-standard"
       image_type         = "COS"

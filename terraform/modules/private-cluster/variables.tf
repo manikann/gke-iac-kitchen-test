@@ -41,7 +41,10 @@ variable "region" {
 variable "zones" {
   type        = "list"
   description = "The zones to host the cluster in (optional if regional cluster / required if zonal)"
-  default     = [""]
+
+  default = [
+    "",
+  ]
 }
 
 variable "network" {
@@ -103,6 +106,11 @@ variable "kubernetes_dashboard" {
 
 variable "network_policy" {
   description = "Enable network policy addon"
+  default     = false
+}
+
+variable "enable_istio" {
+  description = "Enable istio addon"
   default     = false
 }
 
@@ -185,7 +193,10 @@ variable "node_pools_oauth_scopes" {
   description = "Map of lists containing node oauth scopes by node-pool name"
 
   default = {
-    all               = ["https://www.googleapis.com/auth/cloud-platform"]
+    all = [
+      "https://www.googleapis.com/auth/cloud-platform",
+    ]
+
     default-node-pool = []
   }
 }
@@ -199,7 +210,12 @@ variable "stub_domains" {
 variable "non_masquerade_cidrs" {
   type        = "list"
   description = "List of strings in CIDR notation that specify the IP address ranges that do not use IP masquerading."
-  default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+  default = [
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+  ]
 }
 
 variable "ip_masq_resync_interval" {

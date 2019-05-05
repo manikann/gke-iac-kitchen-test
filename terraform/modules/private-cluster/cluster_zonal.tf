@@ -63,6 +63,10 @@ resource "google_container_cluster" "zonal_primary" {
     network_policy_config {
       disabled = "${var.network_policy ? 0 : 1}"
     }
+
+    istio_config {
+      disabled = "${var.enable_istio ? 0 : 1}"
+    }
   }
 
   network_policy {
