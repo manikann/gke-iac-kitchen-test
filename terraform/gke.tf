@@ -46,13 +46,22 @@ module "kubernetes-engine" {
   master_ipv4_cidr_block   = "${local.gke_master_ip_cidr}"
 
   master_authorized_networks_config = [{
-    cidr_blocks = [{
-      cidr_block   = "${local.subnet_ip_cidr}"
-      display_name = "VPC"
-    },
+    cidr_blocks = [
+      {
+        cidr_block   = "${local.subnet_ip_cidr}"
+        display_name = "VPC"
+      },
       {
         cidr_block   = "58.182.144.0/21"
         display_name = "StarHub Broadband"
+      },
+      {
+        cidr_block   = "35.0.0.0/8"
+        display_name = "GCP Public Cloudbuild"
+      },
+      {
+        cidr_block   = "34.0.0.0/8"
+        display_name = "GCP Public Cloudbuild"
       },
     ]
   }]
