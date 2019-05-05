@@ -23,3 +23,9 @@ resource "google_storage_bucket_object" "access-password" {
   name   = "access.password"
   source = "access.password"
 }
+
+resource "google_storage_bucket_object" "artifactory-license" {
+  bucket = "${google_storage_bucket.artifactory_config.id}"
+  name   = "artifactory-license.lic"
+  source = "artifactory-license.lic"
+}

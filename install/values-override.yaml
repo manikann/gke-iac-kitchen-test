@@ -11,12 +11,7 @@ artifactory:
   javaOpts:
     xms: "2g"
     xmx: "4g"
-  livenessProbe:
-    enabled: false
-  readinessProbe:
-    enabled: false
-postgresql:
-  enabled: true
-  imageTag: 11.2
-nginx:
-  enabled: false
+#  livenessProbe:
+#    enabled: false
+#  readinessProbe:
+#    enabled: false
