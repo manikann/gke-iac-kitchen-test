@@ -1,0 +1,15 @@
+# CI values for Mission-control.
+
+# rbac:
+#   create: false
+#
+# serviceAccount:
+#   create: false
+
+postgresql:
+  postgresPassword: postgres
+  db:
+    jfisPassword: password
+    jfscPassword: password
+    jfexPassword: password
+    jfmcPassword: password
