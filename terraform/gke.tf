@@ -56,6 +56,10 @@ module "kubernetes-engine" {
         display_name = "StarHub Broadband"
       },
       {
+        cidr_block   = "156.13.70.0/23"
+        display_name = "ANZ Mobility Wifi"
+      },
+      {
         cidr_block   = "35.0.0.0/8"
         display_name = "GCP Public Cloudbuild"
       },
