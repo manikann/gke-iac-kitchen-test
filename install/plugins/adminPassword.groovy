@@ -10,7 +10,7 @@ changePassword()
 
 void changePassword() {
     def passFile = new File('/artifactory_extra_conf/admin.password')
-    log.warn( "Updating admin password from $passFile" )
+    log.info( "Updating admin password" )
     String password = passFile.text.trim()
     String userName = "admin"
     UserGroupService userGroupService = ContextHelper.get().beanForType(UserGroupService)
@@ -21,5 +21,5 @@ void changePassword() {
     def newUser = InfoFactoryHolder.get().copyUser(user)
     newUser.setPassword(saltedPassword)
     userGroupService.updateUser(newUser, false)
-    log.warn( "Password updaetd for $newUser")
+    log.info( "Password updated for $newUser")
 }

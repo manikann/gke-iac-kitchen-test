@@ -67,6 +67,10 @@ module "kubernetes-engine" {
         cidr_block   = "34.0.0.0/8"
         display_name = "GCP Public Cloudbuild"
       },
+      {
+        cidr_block   = "104.154.0.0/16"
+        display_name = "GCP Public Cloudbuild"
+      },
     ]
   }]
 
