@@ -36,8 +36,8 @@ resource "google_storage_bucket_object" "artifactory-cluster-license" {
   source = "artifactory-cluster.lic"
 }
 
-resource "google_storage_bucket_object" "artifactory-edge-license" {
+resource "google_storage_bucket_object" "artifactory-cache-license" {
   bucket = "${google_storage_bucket.artifactory_config.id}"
-  name   = "artifactory-edge.lic"
-  source = "artifactory-edge.lic"
+  name   = "artifactory-cache.lic"
+  source = "artifactory-cache.lic"
 }

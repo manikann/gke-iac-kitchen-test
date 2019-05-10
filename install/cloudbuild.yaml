@@ -3,6 +3,10 @@ substitutions:
   _HELM_VERSION: v2.13.1
   _CLOUDSDK_COMPUTE_ZONE: us-central1-c
   _CLOUDSDK_CONTAINER_CLUSTER: artifactory-gke
+  _HA_CHART_VERSION: '0.13.0'
+  _CACHE_CHART_VERSION: '7.14.0'
+  _MC_CHART_VERSION: '1.0.6'
+
 timeout: 1800s
 tags: ['artifactory']
 steps:
@@ -21,7 +25,7 @@ steps:
 
         kubectl create secret generic artifactory-license \
           --from-file artifactory-cluster.lic \
-          --from-file artifactory-edge.lic \
+          --from-file artifactory-cache.lic \
           --from-file admin.password \
           --dry-run -o yaml | kubectl apply -f -
 
@@ -37,98 +41,108 @@ steps:
       - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
 
-#  - id: 'mission-control'
-#    name: gcr.io/${PROJECT_ID}/cloud-builders-community-helm:${_HELM_VERSION}
-#    dir: ${_WORKING_DIR}
-#    args:
-#      - 'bash'
-#      - '-c'
-#      - |
-#        helm upgrade mc ./mission-control \
-#            --force \
-#            --install \
-#            --debug \
-#            --timeout 900 \
-#            --set missionControl.mcKey=$(cat master.key) \
-#            --set postgresql.imageTag=11.2-alpine \
-#            --set postgresql.persistence.size=10Gi \
-#            --set postgresql.postgresPassword=$(cat db.password) \
-#            --set postgresql.db.jfmcPassword=$(cat db.password) \
-#            --set postgresql.db.jfisPassword=$(cat db.password) \
-#            --set postgresql.db.jfscPassword=$(cat db.password) \
-#            --set postgresql.db.jfexPassword=$(cat db.password) \
-#            --set elasticsearch.enabled=false \
-#            --set elasticsearch.persistence.enabled=false \
-#            --set missionControl.service.type=NodePort \
-#            --set missionControl.persistence.size=10Gi
-#    env:
-#      - 'TILLERLESS=true'
-#      - 'GCLOUD_PROJECT=${PROJECT_ID}'
-#      - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
-#      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
-#
-#  - id: 'artiractory-ha'
-#    name: gcr.io/${PROJECT_ID}/cloud-builders-community-helm:${_HELM_VERSION}
-#    dir: ${_WORKING_DIR}
-#    args:
-#      - 'bash'
-#      - '-c'
-#      - |
-#        helm upgrade ha ./artifactory-ha \
-#            --force \
-#            --install \
-#            --debug \
-#            --timeout 900 \
-#            --set artifactory.primary.resources.requests.cpu="500m" \
-#            --set artifactory.primary.resources.limits.cpu="2" \
-#            --set artifactory.primary.resources.requests.memory="1Gi" \
-#            --set artifactory.primary.resources.limits.memory="4Gi" \
-#            --set artifactory.primary.javaOpts.xms="1g" \
-#            --set artifactory.primary.javaOpts.xmx="4g" \
-#            --set artifactory.node.resources.requests.cpu="500m" \
-#            --set artifactory.node.resources.limits.cpu="2" \
-#            --set artifactory.node.resources.requests.memory="1Gi" \
-#            --set artifactory.node.resources.limits.memory="4Gi" \
-#            --set artifactory.node.javaOpts.xms="1g" \
-#            --set artifactory.node.javaOpts.xmx="4g" \
-#            --set artifactory.masterKey=$(cat master.key) \
-#            --set artifactory.service.type=NodePort \
-#            --set artifactory.node.replicaCount=2 \
-#            --set artifactory.accessAdmin.password=$(cat access.password) \
-#            --set artifactory.persistence.size=20Gi \
-#            --set artifactory.persistence.maxCacheSize=1000000000 \
-#            --set artifactory.license.secret=artifactory-license,artifactory.license.dataKey=artifactory-cluster.lic \
-#            --set nginx.resources.requests.cpu="100m" \
-#            --set nginx.resources.limits.cpu="250m" \
-#            --set nginx.resources.requests.memory="250Mi" \
-#            --set nginx.resources.limits.memory="500Mi" \
-#            --set nginx.service.type=NodePort \
-#            --set postgresql.resources.requests.cpu="200m" \
-#            --set postgresql.resources.limits.cpu="1" \
-#            --set postgresql.resources.requests.memory="500Mi" \
-#            --set postgresql.resources.limits.memory="1Gi" \
-#            --set postgresql.postgresPassword=$(cat db.password) \
-#            --set postgresql.imageTag=11.2-alpine \
-#            --set postgresql.persistence.size=2Gi
-#    env:
-#      - 'TILLERLESS=true'
-#      - 'GCLOUD_PROJECT=${PROJECT_ID}'
-#      - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
-#      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
-#
-  - id: 'artiractory-edge'
+  - id: 'mission-control'
     name: gcr.io/${PROJECT_ID}/cloud-builders-community-helm:${_HELM_VERSION}
     dir: ${_WORKING_DIR}
     args:
       - 'bash'
       - '-c'
       - |
-        helm upgrade edge ./artifactory \
+        helm upgrade mc jfrog/mission-control \
             --force \
             --install \
             --debug \
             --timeout 900 \
+            --version ${_MC_CHART_VERSION} \
+            --set missionControl.mcKey=$(cat master.key) \
+            --set postgresql.imageTag=11.2-alpine \
+            --set postgresql.persistence.size=10Gi \
+            --set postgresql.postgresPassword=$(cat db.password) \
+            --set postgresql.db.jfmcPassword=$(cat db.password) \
+            --set postgresql.db.jfisPassword=$(cat db.password) \
+            --set postgresql.db.jfscPassword=$(cat db.password) \
+            --set postgresql.db.jfexPassword=$(cat db.password) \
+            --set elasticsearch.enabled=false \
+            --set elasticsearch.persistence.enabled=false \
+            --set missionControl.service.type=NodePort \
+            --set missionControl.persistence.size=10Gi
+    env:
+      - 'TILLERLESS=true'
+      - 'GCLOUD_PROJECT=${PROJECT_ID}'
+      - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
+      - 'HELM_REPO_URL=https://charts.jfrog.io/'
+      - 'HELM_REPO_NAME=jfrog'
+
+  - id: 'artiractory-ha'
+    name: gcr.io/${PROJECT_ID}/cloud-builders-community-helm:${_HELM_VERSION}
+    dir: ${_WORKING_DIR}
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        helm upgrade ha jfrog/artifactory-ha \
+            --force \
+            --install \
+            --debug \
+            --timeout 900 \
+            --version ${_HA_CHART_VERSION} \
             --values admin-password-config.yaml \
+            --set artifactory.configMapName=bootstrap-config \
+            --set artifactory.primary.resources.requests.cpu="500m" \
+            --set artifactory.primary.resources.limits.cpu="2" \
+            --set artifactory.primary.resources.requests.memory="1Gi" \
+            --set artifactory.primary.resources.limits.memory="4Gi" \
+            --set artifactory.primary.javaOpts.xms="1g" \
+            --set artifactory.primary.javaOpts.xmx="4g" \
+            --set artifactory.node.resources.requests.cpu="500m" \
+            --set artifactory.node.resources.limits.cpu="2" \
+            --set artifactory.node.resources.requests.memory="1Gi" \
+            --set artifactory.node.resources.limits.memory="4Gi" \
+            --set artifactory.node.javaOpts.xms="1g" \
+            --set artifactory.node.javaOpts.xmx="4g" \
+            --set artifactory.masterKey=$(cat master.key) \
+            --set artifactory.service.type=NodePort \
+            --set artifactory.node.replicaCount=2 \
+            --set artifactory.accessAdmin.password=$(cat access.password) \
+            --set artifactory.persistence.size=20Gi \
+            --set artifactory.persistence.maxCacheSize=1000000000 \
+            --set artifactory.license.secret=artifactory-license,artifactory.license.dataKey=artifactory-cluster.lic \
+            --set nginx.resources.requests.cpu="100m" \
+            --set nginx.resources.limits.cpu="250m" \
+            --set nginx.resources.requests.memory="250Mi" \
+            --set nginx.resources.limits.memory="500Mi" \
+            --set nginx.service.type=NodePort \
+            --set postgresql.resources.requests.cpu="200m" \
+            --set postgresql.resources.limits.cpu="1" \
+            --set postgresql.resources.requests.memory="500Mi" \
+            --set postgresql.resources.limits.memory="1Gi" \
+            --set postgresql.postgresPassword=$(cat db.password) \
+            --set postgresql.imageTag=11.2-alpine \
+            --set postgresql.persistence.size=2Gi
+    env:
+      - 'TILLERLESS=true'
+      - 'GCLOUD_PROJECT=${PROJECT_ID}'
+      - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
+      - 'HELM_REPO_URL=https://charts.jfrog.io/'
+      - 'HELM_REPO_NAME=jfrog'
+
+  - id: 'artiractory-cache'
+    name: gcr.io/${PROJECT_ID}/cloud-builders-community-helm:${_HELM_VERSION}
+    dir: ${_WORKING_DIR}
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        helm upgrade cache jfrog/artifactory \
+            --force \
+            --install \
+            --debug \
+            --timeout 900 \
+            --version ${_CACHE_CHART_VERSION} \
+            --values admin-password-config.yaml \
+            --set artifactory.configMapName=bootstrap-config \
             --set artifactory.resources.requests.cpu="500m" \
             --set artifactory.resources.limits.cpu="2" \
             --set artifactory.resources.requests.memory="1Gi" \
@@ -140,8 +154,7 @@ steps:
             --set artifactory.accessAdmin.password=$(cat access.password) \
             --set artifactory.persistence.size=20Gi \
             --set artifactory.persistence.maxCacheSize=1000000000 \
-            --set artifactory.license.secret=artifactory-license,artifactory.license.dataKey=artifactory-edge.lic \
-            --set artifactory.configMapName=bootstrap-config \
+            --set artifactory.license.secret=artifactory-license,artifactory.license.dataKey=artifactory-cache.lic \
             --set nginx.enabled=false \
             --set postgresql.resources.requests.cpu="200m" \
             --set postgresql.resources.limits.cpu="1" \
@@ -155,3 +168,5 @@ steps:
       - 'GCLOUD_PROJECT=${PROJECT_ID}'
       - 'CLOUDSDK_COMPUTE_ZONE=${_CLOUDSDK_COMPUTE_ZONE}'
       - 'CLOUDSDK_CONTAINER_CLUSTER=${_CLOUDSDK_CONTAINER_CLUSTER}'
+      - 'HELM_REPO_URL=https://charts.jfrog.io/'
+      - 'HELM_REPO_NAME=jfrog'
