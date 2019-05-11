@@ -22,7 +22,6 @@ terraform.plan
 .*.swp
 
 # Local files
-*.json
 *.lic
 *.key
 *.password
