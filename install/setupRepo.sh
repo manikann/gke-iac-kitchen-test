@@ -151,62 +151,76 @@ function createRepo() {
   _curl $site api/repositories/${repoName} -X PUT -T $dataFile
 }
 
-function isReplicationConfigured() {
-  local site=$1
-  local repoName=$2
-  if _curl $site api/replications/${repoName} 2>/dev/null| jq -Mr '.[].url' | grep -qi "$_EDGE_REPLURL"; then
-    echo "Replication for ${repoName} already exists at ${site}"
+function isPushReplicationConfigured() {
+  local repoName=$1
+  if _curl "master" api/replications/${repoName} 2>/dev/null| jq -Mr '.[].url' | grep -qi "$_EDGE_REPLURL"; then
+    echo "Push Replication for ${repoName} already exists"
     return 0
   fi
   return 1
 }
 
 function createPushReplication() {
-  local site=$1
-  local repoName=$2
-  local remoteSite=$3
-  local remoteRepoName=$4
-  local remoteUserid=$(getConfig $remoteSite userid)
-  local remotePassword=$(getConfig $remoteSite pwd)
+  local repoName=$1
+  local edgeRepoName=$2
+  local edgeUserid=$(getConfig "edge" userid)
+  local edgePassword=$(getConfig "edge" pwd)
 
   local dataFile=$(tempFile replication.config)
   cat <<EOF  > $dataFile
-  [
-    {
-      "url": "${_EDGE_REPLURL}/${remoteRepoName}",
-      "username": "${remoteUserid}",
-      "password": "${remotePassword}",
-      "repoKey": "${repoName}",
-      "cronExp": "0 0/15 * * * ?",
+  [{
+      "url": "${_EDGE_REPLURL}/${edgeRepoName}",
+      "username": "${edgeUserid}",
+      "password": "${edgePassword}",
+      "cronExp": "0 0/30 * * * ?",
       "enabled": true,
       "enableEventReplication": true
-    }
-  ]
+  }]
 EOF
-  _curl $site api/replications/${repoName} -X PUT -T $dataFile
-  echo "Successfully created replication for ${repoName}"
+  _curl "master" api/replications/${repoName} -X PUT -T $dataFile
+  echo "Successfully created push replication for ${repoName}"
+}
+
+function isPullReplicationConfigured() {
+  local repoName=$1
+  if _curl "master" api/replications/${repoName} 2>/dev/null| grep -q "enabled"; then
+    echo "Pull Replication for ${repoName} already exists"
+    return 0
+  fi
+  return 1
+}
+
+function createPullReplication() {
+  local repoName=$1
+  local dataFile=$(tempFile replication.config)
+  cat <<EOF  > $dataFile
+  {
+    "enabled": true,
+    "cronExp": "0 0/30 * * * ?",
+    "syncDeletes": false,
+    "syncProperties": false,
+    "enableEventReplication": false
+  }
+EOF
+  _curl "master" api/replications/${repoName} -X PUT -T $dataFile
+  echo "Successfully created pull replication for ${repoName}"
 }
 
 function applyConfig() {
   local configJson=$1
   local site=$(echo "$configJson" | jq -Mr '.site' )
   local repoName=$(echo "$configJson" | jq -Mr '.repoName' )
-  local repoType=$(echo "$configJson" | jq -Mr '.repoType' )
+  local repoConfigJson=$(echo "$configJson" | jq '.repoConfig')
   local remoteRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
-  #local repoConfigJson=$(echo "$configJson" | jq '.repoConfig + {key: .repoName, rclass: .repoType}')
-  local repoConfigJson=$(echo "$configJson" | jq '.repoConfig + {rclass: .repoType}')
+  local remoteRepoConfigJson=$(echo "$configJson" | jq '.remoteRepoConfig? | select (.!=null)')
 
+  [[ -z "$remoteRepoConfigJson" ]]; remoteRepoConfigJson="$repoConfigJson"
 
   echo
-  echo "About to configure $repoName ($repoType) at $site"
+  echo "About to configure '$repoName' at '$site'"
 
   if ! isRepoExist $site $repoName; then
     createRepo $site $repoName "$repoConfigJson"
-  fi
-
-  if echo "$repoType" | grep -iq "remote"; then
-    [[ ! -z "$remoteRepoName" ]] && echo "Remote repo can have remote replication. Ignored  $remoteRepoName"
-    return 0
   fi
 
   if [[ -z "$remoteRepoName" ]]; then
@@ -214,20 +228,49 @@ function applyConfig() {
     return 0
   fi
 
-  if isReplicationConfigured $site $repoName; then
-    return 0
-  fi
+  if [[ "$site" == "master" ]]; then
 
-  local remoteSite="edge"
-  if [[ "$site" == "edge" ]]; then
-    remoteSite="master"
-  fi
+    # Aliases for readability
+    local masterRepoName=$repoName
+    local edgeRepoName=$remoteRepoName
+    local edgeRepoConfigJson="$remoteRepoConfigJson"
 
-  if ! isRepoExist $remoteSite $remoteRepoName; then
-    createRepo $remoteSite $remoteRepoName "$repoConfigJson"
-  fi
+    if ! isRepoExist "edge" $edgeRepoName; then
+      createRepo "edge" $edgeRepoName "$edgeRepoConfigJson"
+    fi
 
-  createPushReplication $site $repoName $remoteSite $remoteRepoName
+    if ! isPushReplicationConfigured $masterRepoName; then
+      createPushReplication $masterRepoName $edgeRepoName
+    fi
+
+  else
+
+    # Aliases for readability
+    local edgeRepoName=$repoName
+    local masterRepoName=$remoteRepoName
+    local masterRepoConfigJson="$remoteRepoConfigJson"
+
+
+    if ! isRepoExist "master" $remoteRepoName; then
+
+      local edgeUrl="${_EDGE_REPLURL}/${edgeRepoName}"
+      local edgeUserid=$(getConfig "edge" userid)
+      local edgePassword=$(getConfig "edge" pwd)
+
+      # Append url, userid and password to config json
+      masterRepoConfigJson=$( echo "$masterRepoConfigJson" | jq -Mr \
+            --arg edgeUrl "$edgeUrl"  \
+            --arg edgeUserid "$edgeUserid"  \
+            --arg edgePassword "$edgePassword"  \
+            '.rclass = "remote" | .url = $edgeUrl | .username = $edgeUserid | .password = $edgePassword' )
+      createRepo "master" $masterRepoName "$masterRepoConfigJson"
+    fi
+
+    if ! isPullReplicationConfigured $masterRepoName; then
+      createPullReplication $masterRepoName
+    fi
+
+  fi
 }
 
 init
