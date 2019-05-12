@@ -106,10 +106,6 @@ function init() {
   CONFIG_MAP["edge.token"]=$(getAccessToken $_EDGE_BASEURL $_EDGE_USERID $_EDGE_PWD)
 }
 
-function tempFile() {
-  mktemp ${MYTMPDIR}/${1}.XXXXX
-}
-
 function getConfig() {
   local site=$1
   local config=$2
@@ -168,7 +164,7 @@ function createRepo() {
     _curl $site api/repositories/${repoName} -X PUT -T -
 }
 
-function createPullRepo() {
+function createPullRepoAtMaster() {
   local masterRepoName=$1
   local edgeRepoName=$2
   local configJson=$3
@@ -185,6 +181,17 @@ function createPullRepo() {
         --arg edgeUserid "$edgeUserid"  \
         --arg edgePassword "$edgePassword"  \
         '.rclass = "remote" | .url = $edgeUrl | .username = $edgeUserid | .password = $edgePassword' | \
+    _curl "master" api/repositories/${masterRepoName} -X PUT -T -
+}
+
+function createPushRepoAtMaster() {
+  local masterRepoName=$1
+  local configJson=$2
+
+  echo "Creating local repo $masterRepoName for push replication"
+  # Delete url and change rclass to local
+  getRepoConfigJson "master" "$configJson" true | \
+    jq -Mr 'del(.url) | .rclass="local"' | \
     _curl "master" api/repositories/${masterRepoName} -X PUT -T -
 }
 
@@ -250,13 +257,13 @@ function printJson() {
   echo "$json" | jq -Cc .
 }
 
-function configureMasterLocalRepo() {
+function configureLocalRepoAtMaster() {
   local configJson=$1
   local masterRepoName=$(echo "$configJson" | jq -Mr '.repoName' )
   local edgeRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
 
   echo
-  echo "configureMasterLocalRepo: " $(printJson "$configJson")
+  echo "configureLocalRepoAtMaster: " $(printJson "$configJson")
   echo
 
   # Create repo at master if required
@@ -265,7 +272,7 @@ function configureMasterLocalRepo() {
   fi
 
   if [[ -z "$edgeRepoName" ]]; then
-    echo "configureMasterLocalRepo: Remote repo not configured. Not required ?"
+    echo "configureLocalRepoAtMaster: Edge remote repo not configured. Not required ?"
     return 0
   fi
 
@@ -280,13 +287,13 @@ function configureMasterLocalRepo() {
   fi
 }
 
-function configureEdgeLocalRepo() {
+function configureLocalRepoAtEdge() {
   local configJson=$1
   local edgeRepoName=$(echo "$configJson" | jq -Mr '.repoName' )
   local masterRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
 
   echo
-  echo "configureEdgeLocalRepo: " $(printJson "$configJson")
+  echo "configureLocalRepoAtEdge: " $(printJson "$configJson")
   echo
 
   # Create repo at edge if required
@@ -295,7 +302,7 @@ function configureEdgeLocalRepo() {
   fi
 
   if [[ -z "$masterRepoName" ]]; then
-    echo "configureEdgeLocalRepo: Remote repo not configured. Not required ?"
+    echo "configureLocalRepoAtEdge: Master remote repo not configured. Not required ?"
     return 0
   fi
 
@@ -304,7 +311,7 @@ function configureEdgeLocalRepo() {
 
     # Configure edge repo as remote repo and configure pull replication
     # To meet the usecase of all comms need to start at master
-    createPullRepo $masterRepoName $edgeRepoName "$configJson"
+    createPullRepoAtMaster $masterRepoName $edgeRepoName "$configJson"
   fi
 
   if ! isPullReplicationConfigured $masterRepoName; then
@@ -312,15 +319,46 @@ function configureEdgeLocalRepo() {
   fi
 }
 
-function configureMasterRemoteRepo() {
-  echo "Not yet " $@
+function configurRemoteRepoAtMaster() {
+  local configJson=$1
+  local masterRepoName=$(echo "$configJson" | jq -Mr '.repoName' )
+  local edgeRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
+
+  echo
+  echo "configurRemoteRepoAtMaster: " $(printJson "$configJson")
+  echo
+
+  # Create repo at master if required
+  if ! isRepoExist "master" $masterRepoName; then
+    createRepo "master" $masterRepoName "$configJson"
+  fi
+
+  if [[ -z "$edgeRepoName" ]]; then
+    echo "configurRemoteRepoAtMaster: Edge remote repo not configured. Not required ?"
+    return 0
+  fi
+
+  # Create a local repo at master to copy artifacts from cache to local repo
+  # Local repo will be 'Pushed' to edge
+  local masterLocalRepoName="${masterRepoName}-local"
+
+  # Create repo at master if required
+  if ! isRepoExist "master" $masterLocalRepoName; then
+    createPushRepoAtMaster $masterLocalRepoName "$configJson"
+  fi
+
+  # Create repo at edge if required
+  if ! isRepoExist "edge" $edgeRepoName; then
+    createRepo "edge" $edgeRepoName "$configJson" true
+  fi
+
+  # Configure master -> edge push replication
+  if ! isPushReplicationConfigured $masterLocalRepoName; then
+    createPushReplication $masterLocalRepoName $edgeRepoName
+  fi
 }
 
-function configureMasterVirtualRepo() {
-  echo "Not yet " $@
-}
-
-function configureEdgeVirtualRepo() {
+function configureVirtualRepo() {
   echo "Not yet " $@
 }
 
@@ -333,11 +371,11 @@ function applyConfig() {
   echo "-------------------------------------------------------------------------------------------------"
   echo "Site: $site, RepoType: $repoType"
   case "$site-$repoType" in
-      master-local) configureMasterLocalRepo "$configJson";;
-        edge-local) configureEdgeLocalRepo "$configJson";;
-     master-remote) configureMasterRemoteRepo "$configJson";;
-    master-virtual) configureMasterVirtualRepo "$configJson";;
-      edge-virtual) configureEdgeVirtualRepo "$configJson";;
+      master-local) configureLocalRepoAtMaster "$configJson";;
+        edge-local) configureLocalRepoAtEdge "$configJson";;
+     master-remote) configurRemoteRepoAtMaster "$configJson";;
+    master-virtual) configureVirtualRepo "$configJson";;
+      edge-virtual) configureVirtualRepo "$configJson";;
                  *) echo "Invalid repoType '$repoType' or site '$site'"; exit 1;;
   esac
 }
@@ -345,11 +383,8 @@ function applyConfig() {
 # Main logic starts here
 init
 
-# Create a temp directory for all files generated during this execution
-MYTMPDIR=$(mktemp -d /tmp/setup.XXXX)
-trap "rm -rf $MYTMPDIR" EXIT
-
 for repoName in $(cat setupRepo.json | jq -Mr '.[].repoName'); do
   applyConfig  "$(cat setupRepo.json | jq -Mr --arg repo $repoName '.[] | select (.repoName == $repo )')"
 done
+
 echo "Done"
