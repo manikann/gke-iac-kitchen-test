@@ -137,13 +137,19 @@ function isRepoExist() {
   return 1
 }
 
+function getRepoJson() {
+  local site=$1
+  local repoName=$2
+  _curl $site api/repositories/${repoName} -XGET 2>/dev/null
+}
+
 function getRepoConfigJson() {
   local site=$1
   local configJson=$2
   local isRemote=${3:-false}
   local repoConfigJson=""
 
-  if [[ $isRemote ]]; then
+  if [[ $isRemote == true ]]; then
     repoConfigJson=$(echo "$configJson" | jq '.remoteRepoConfig? | select (.!=null)')
   fi
 
@@ -162,6 +168,15 @@ function createRepo() {
   echo "Creating repo $repoName at $site"
   getRepoConfigJson $site "$configJson" $isRemote | \
     _curl $site api/repositories/${repoName} -X PUT -T -
+}
+
+function updateRepo() {
+  local site=$1
+  local repoName=$2
+  local configJson=$3
+
+  echo "Updating repo $repoName at $site"
+  echo  "$configJson" | _curl $site api/repositories/${repoName} -X POST -T -
 }
 
 function createPullRepoAtMaster() {
@@ -358,18 +373,64 @@ function configurRemoteRepoAtMaster() {
   fi
 }
 
+function isRepoAlreadyPresent() {
+  local repoConfigJson=$1
+  local repoToBeChecked=$2
+  local virutalRepo=$3
+
+  local checkStr=$(echo "$repoConfigJson" | \
+    jq --arg checkRepo $repoToBeChecked -Mr '.repositories[] | select ( . == $checkRepo )' )
+  if  [[ ! -z "$checkStr" ]];  then
+    echo "Repo ${repoToBeChecked} already exists in '$virutalRepo' virtual repo"
+    return 0
+  fi
+  return 1
+}
+
+function appendRepoToArray() {
+  local repoConfigJson=$1
+  local repoToBeAdded=$2
+  echo "$repoConfigJson" | jq --arg repo $repoToBeAdded -Mr '.repositories += [ $repo ]'
+}
+
 function configureVirtualRepo() {
-  echo "Not yet " $@
+  local configJson=$1
+  local site=$(echo "$configJson" | jq -Mr '.site' )
+  local repoName=$(echo "$configJson" | jq -Mr '.repoName' )
+
+  local currentRepoConfig=$(getRepoJson $site $repoName)
+
+  if [[ -z "$currentRepoConfig" ]]; then
+    # Not there create one now
+    createRepo $site $repoName "$configJson"
+  else
+
+    # Merge current repositories into existing definition
+    local needToUpdate=false
+    local toBeConfiguredRepos=( $(echo "$configJson" | jq -Mcr '.repoConfig.repositories | @tsv') )
+
+    for repoToBeConfigured in ${toBeConfiguredRepos[@]}; do
+      if ! isRepoAlreadyPresent "$currentRepoConfig" $repoToBeConfigured $repoName; then
+        currentRepoConfig=$(appendRepoToArray "$currentRepoConfig" $repoToBeConfigured)
+        needToUpdate=true
+      fi
+    done
+
+    if [[ $needToUpdate == true ]];then
+      updateRepo $site $repoName "$currentRepoConfig"
+    fi
+  fi
 }
 
 function applyConfig() {
   local configJson=$1
   local site=$(echo "$configJson" | jq -Mr '.site | ascii_downcase' )
   local repoType=$(echo "$configJson" | jq -Mr '.repoConfig.rclass | ascii_downcase' )
+  local repoName=$(echo "$configJson" | jq -Mr '.repoName' )
 
   echo
-  echo "-------------------------------------------------------------------------------------------------"
-  echo "Site: $site, RepoType: $repoType"
+  echo "-------------------------------------- $repoName ---------------------------------------------------"
+  echo "Repo: $repoName  Site: $site, RepoType: $repoType"
   case "$site-$repoType" in
       master-local) configureLocalRepoAtMaster "$configJson";;
         edge-local) configureLocalRepoAtEdge "$configJson";;

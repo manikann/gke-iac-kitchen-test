@@ -10,17 +10,6 @@
     "remoteRepoName": "jcenter-repl"
   },
   {
-    "site": "master",
-    "repoName": "libs-release",
-    "repoConfig": {
-      "rclass": "virtual",
-      "packageType": "maven",
-      "repositories": [
-        "jcenter"
-      ]
-    }
-  },
-  {
     "site": "edge",
     "repoName": "to-master",
     "repoConfig": {
@@ -37,5 +26,17 @@
       "packageType": "maven"
     },
     "remoteRepoName": "from-master"
+  },
+  {
+    "site": "master",
+    "repoName": "libs-release",
+    "repoConfig": {
+      "rclass": "virtual",
+      "packageType": "maven",
+      "repositories": [
+        "jcenter",
+        "to-edge"
+      ]
+    }
   }
 ]
