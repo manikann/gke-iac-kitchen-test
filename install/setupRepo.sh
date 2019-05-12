@@ -6,10 +6,10 @@ set -o pipefail
 
 declare -A OPTS=(
           ["master-baseurl:"]="Base URL of the master artifactory"
-         ["master-useridid:"]="Master artifactory userid"
+           ["master-userid:"]="Master artifactory userid"
          ["master-password:"]="Master artifactory password"
             ["edge-baseurl:"]="Base URL of the artifactory edge"
-           ["edge-useridid:"]="Edge artifactory userid"
+             ["edge-userid:"]="Edge artifactory userid"
            ["edge-password:"]="Edge artifactory password"
             ["edge-replurl:"]="Base URL of the artifactory edge for replication"
       )
