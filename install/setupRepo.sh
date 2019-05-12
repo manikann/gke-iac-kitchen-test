@@ -34,7 +34,7 @@ function usage() {
   done
   echo
   echo "example"
-  echo "./setupRepo.sh --master-baseurl 'http://localhost:8081/artifactory' --master-password 'Welcome!23' --edge-baseurl 'http://localhost:8082/artifactory'"
+  echo "./setupRepo.sh --master-baseurl 'http://localhost:8081/artifactory' --master-password password --edge-baseurl 'http://localhost:8082/artifactory'"
   exit 1
 }
 
@@ -141,14 +141,51 @@ function isRepoExist() {
   return 1
 }
 
+function getRepoConfigJson() {
+  local site=$1
+  local configJson=$2
+  local isRemote=${3:-false}
+  local repoConfigJson=""
+
+  if [[ $isRemote ]]; then
+    repoConfigJson=$(echo "$configJson" | jq '.remoteRepoConfig? | select (.!=null)')
+  fi
+
+  if [[ -z "$repoConfigJson" ]]; then
+    repoConfigJson=$(echo "$configJson" | jq '.repoConfig')
+  fi
+  echo "$repoConfigJson"
+}
+
 function createRepo() {
   local site=$1
   local repoName=$2
-  local repoConfigJson=$3
+  local configJson=$3
+  local isRemote=${4:-false}
 
-  local dataFile=$(tempFile repo-config-json)
-  echo "$repoConfigJson" > $dataFile
-  _curl $site api/repositories/${repoName} -X PUT -T $dataFile
+  echo "Creating repo $repoName at $site"
+  getRepoConfigJson $site "$configJson" $isRemote | \
+    _curl $site api/repositories/${repoName} -X PUT -T -
+}
+
+function createPullRepo() {
+  local masterRepoName=$1
+  local edgeRepoName=$2
+  local configJson=$3
+
+  local edgeUrl="${_EDGE_REPLURL}/${edgeRepoName}"
+  local edgeUserid=$(getConfig "edge" userid)
+  local edgePassword=$(getConfig "edge" pwd)
+
+  echo "Creating remote repo $masterRepoName at master for $edgeRepoName"
+  # Append url, userid and password to config json
+  getRepoConfigJson "master" "$configJson" true | \
+    jq -Mr \
+        --arg edgeUrl "$edgeUrl"  \
+        --arg edgeUserid "$edgeUserid"  \
+        --arg edgePassword "$edgePassword"  \
+        '.rclass = "remote" | .url = $edgeUrl | .username = $edgeUserid | .password = $edgePassword' | \
+    _curl "master" api/repositories/${masterRepoName} -X PUT -T -
 }
 
 function isPushReplicationConfigured() {
@@ -161,13 +198,14 @@ function isPushReplicationConfigured() {
 }
 
 function createPushReplication() {
-  local repoName=$1
+  local masterRepoName=$1
   local edgeRepoName=$2
   local edgeUserid=$(getConfig "edge" userid)
   local edgePassword=$(getConfig "edge" pwd)
 
-  local dataFile=$(tempFile replication.config)
-  cat <<EOF  > $dataFile
+  echo "Creating PUSH replication between $masterRepoName and $edgeRepoName"
+
+  cat <<EOF | _curl "master" api/replications/${masterRepoName} -X PUT -T -
   [{
       "url": "${_EDGE_REPLURL}/${edgeRepoName}",
       "username": "${edgeUserid}",
@@ -177,23 +215,24 @@ function createPushReplication() {
       "enableEventReplication": true
   }]
 EOF
-  _curl "master" api/replications/${repoName} -X PUT -T $dataFile
-  echo "Successfully created push replication for ${repoName}"
+
+  echo "Successfully created push replication for ${masterRepoName}"
 }
 
 function isPullReplicationConfigured() {
-  local repoName=$1
-  if _curl "master" api/replications/${repoName} 2>/dev/null| grep -q "enabled"; then
-    echo "Pull Replication for ${repoName} already exists"
+  local masterRepoName=$1
+  if _curl "master" api/replications/${masterRepoName} 2>/dev/null| grep -q "enabled"; then
+    echo "Pull Replication for ${masterRepoName} already exists"
     return 0
   fi
   return 1
 }
 
 function createPullReplication() {
-  local repoName=$1
-  local dataFile=$(tempFile replication.config)
-  cat <<EOF  > $dataFile
+  local masterRepoName=$1
+
+  echo "Creating PULL replication $masterRepoName"
+  cat <<EOF | _curl "master" api/replications/${masterRepoName} -X PUT -T -
   {
     "enabled": true,
     "cronExp": "0 0/30 * * * ?",
@@ -202,77 +241,108 @@ function createPullReplication() {
     "enableEventReplication": false
   }
 EOF
-  _curl "master" api/replications/${repoName} -X PUT -T $dataFile
-  echo "Successfully created pull replication for ${repoName}"
+
+  echo "Successfully created pull replication for ${masterRepoName}"
+}
+
+function printJson() {
+  local json=$1
+  echo "$json" | jq -Cc .
+}
+
+function configureMasterLocalRepo() {
+  local configJson=$1
+  local masterRepoName=$(echo "$configJson" | jq -Mr '.repoName' )
+  local edgeRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
+
+  echo
+  echo "configureMasterLocalRepo: " $(printJson "$configJson")
+  echo
+
+  # Create repo at master if required
+  if ! isRepoExist "master" $masterRepoName; then
+    createRepo "master" $masterRepoName "$configJson"
+  fi
+
+  if [[ -z "$edgeRepoName" ]]; then
+    echo "configureMasterLocalRepo: Remote repo not configured. Not required ?"
+    return 0
+  fi
+
+  # Create repo at edge if required
+  if ! isRepoExist "edge" $edgeRepoName; then
+    createRepo "edge" $edgeRepoName "$configJson" true
+  fi
+
+  # Configure master -> edge push replication
+  if ! isPushReplicationConfigured $masterRepoName; then
+    createPushReplication $masterRepoName $edgeRepoName
+  fi
+}
+
+function configureEdgeLocalRepo() {
+  local configJson=$1
+  local edgeRepoName=$(echo "$configJson" | jq -Mr '.repoName' )
+  local masterRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
+
+  echo
+  echo "configureEdgeLocalRepo: " $(printJson "$configJson")
+  echo
+
+  # Create repo at edge if required
+  if ! isRepoExist "edge" $edgeRepoName; then
+    createRepo "edge" $edgeRepoName "$configJson"
+  fi
+
+  if [[ -z "$masterRepoName" ]]; then
+    echo "configureEdgeLocalRepo: Remote repo not configured. Not required ?"
+    return 0
+  fi
+
+  # Create repo at master if required
+  if ! isRepoExist "master" $masterRepoName; then
+
+    # Configure edge repo as remote repo and configure pull replication
+    # To meet the usecase of all comms need to start at master
+    createPullRepo $masterRepoName $edgeRepoName "$configJson"
+  fi
+
+  if ! isPullReplicationConfigured $masterRepoName; then
+    createPullReplication $masterRepoName
+  fi
+}
+
+function configureMasterRemoteRepo() {
+  echo "Not yet " $@
+}
+
+function configureMasterVirtualRepo() {
+  echo "Not yet " $@
+}
+
+function configureEdgeVirtualRepo() {
+  echo "Not yet " $@
 }
 
 function applyConfig() {
   local configJson=$1
-  local site=$(echo "$configJson" | jq -Mr '.site' )
-  local repoName=$(echo "$configJson" | jq -Mr '.repoName' )
-  local repoConfigJson=$(echo "$configJson" | jq '.repoConfig')
-  local remoteRepoName=$(echo "$configJson" | jq -Mr '.remoteRepoName? | select (.!=null)' )
-  local remoteRepoConfigJson=$(echo "$configJson" | jq '.remoteRepoConfig? | select (.!=null)')
-
-  [[ -z "$remoteRepoConfigJson" ]]; remoteRepoConfigJson="$repoConfigJson"
+  local site=$(echo "$configJson" | jq -Mr '.site | ascii_downcase' )
+  local repoType=$(echo "$configJson" | jq -Mr '.repoConfig.rclass | ascii_downcase' )
 
   echo
-  echo "About to configure '$repoName' at '$site'"
-
-  if ! isRepoExist $site $repoName; then
-    createRepo $site $repoName "$repoConfigJson"
-  fi
-
-  if [[ -z "$remoteRepoName" ]]; then
-    echo "Remote repo not configured. Not required ?"
-    return 0
-  fi
-
-  if [[ "$site" == "master" ]]; then
-
-    # Aliases for readability
-    local masterRepoName=$repoName
-    local edgeRepoName=$remoteRepoName
-    local edgeRepoConfigJson="$remoteRepoConfigJson"
-
-    if ! isRepoExist "edge" $edgeRepoName; then
-      createRepo "edge" $edgeRepoName "$edgeRepoConfigJson"
-    fi
-
-    if ! isPushReplicationConfigured $masterRepoName; then
-      createPushReplication $masterRepoName $edgeRepoName
-    fi
-
-  else
-
-    # Aliases for readability
-    local edgeRepoName=$repoName
-    local masterRepoName=$remoteRepoName
-    local masterRepoConfigJson="$remoteRepoConfigJson"
-
-
-    if ! isRepoExist "master" $remoteRepoName; then
-
-      local edgeUrl="${_EDGE_REPLURL}/${edgeRepoName}"
-      local edgeUserid=$(getConfig "edge" userid)
-      local edgePassword=$(getConfig "edge" pwd)
-
-      # Append url, userid and password to config json
-      masterRepoConfigJson=$( echo "$masterRepoConfigJson" | jq -Mr \
-            --arg edgeUrl "$edgeUrl"  \
-            --arg edgeUserid "$edgeUserid"  \
-            --arg edgePassword "$edgePassword"  \
-            '.rclass = "remote" | .url = $edgeUrl | .username = $edgeUserid | .password = $edgePassword' )
-      createRepo "master" $masterRepoName "$masterRepoConfigJson"
-    fi
-
-    if ! isPullReplicationConfigured $masterRepoName; then
-      createPullReplication $masterRepoName
-    fi
-
-  fi
+  echo "-------------------------------------------------------------------------------------------------"
+  echo "Site: $site, RepoType: $repoType"
+  case "$site-$repoType" in
+      master-local) configureMasterLocalRepo "$configJson";;
+        edge-local) configureEdgeLocalRepo "$configJson";;
+     master-remote) configureMasterRemoteRepo "$configJson";;
+    master-virtual) configureMasterVirtualRepo "$configJson";;
+      edge-virtual) configureEdgeVirtualRepo "$configJson";;
+                 *) echo "Invalid repoType '$repoType' or site '$site'"; exit 1;;
+  esac
 }
 
+# Main logic starts here
 init
 
 # Create a temp directory for all files generated during this execution

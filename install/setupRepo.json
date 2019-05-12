@@ -6,16 +6,19 @@
       "rclass": "remote",
       "packageType": "maven",
       "url": "https://jcenter.bintray.com"
-    }
+    },
+    "remoteRepoName": "jcenter-repl"
   },
   {
     "site": "master",
-    "repoName": "jcenter-local",
+    "repoName": "libs-release",
     "repoConfig": {
-      "rclass": "local",
-      "packageType": "maven"
-    },
-    "remoteRepoName": "jcenter-repl"
+      "rclass": "virtual",
+      "packageType": "maven",
+      "repositories": [
+        "jcenter"
+      ]
+    }
   },
   {
     "site": "edge",
@@ -25,5 +28,14 @@
       "packageType": "maven"
     },
     "remoteRepoName": "from-edge"
+  },
+  {
+    "site": "master",
+    "repoName": "to-edge",
+    "repoConfig": {
+      "rclass": "local",
+      "packageType": "maven"
+    },
+    "remoteRepoName": "from-master"
   }
 ]
